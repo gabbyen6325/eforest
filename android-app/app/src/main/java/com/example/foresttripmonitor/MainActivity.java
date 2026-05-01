@@ -102,6 +102,10 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
+        // PC Playwright와 동일한 데스크톱 페이지(지도·rc_item)를 받기 위해 모바일 UA 제거
+        settings.setUserAgentString(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
+                        + " Chrome/120.0.0.0 Safari/537.36");
         webView.addJavascriptInterface(new ForestTripBridge(this), "ForestTripAndroid");
         webView.setWebViewClient(new WebViewClient());
     }
@@ -343,8 +347,8 @@ public class MainActivity extends Activity {
                         + "const houseMode='"
                         + houseMode
                         + "';"
-                        + "const compact=s=>s.replaceAll('-','');"
-                        + "const display=checkIn.replaceAll('-','.')+' ~ '+checkOut.replaceAll('-','.');"
+                        + "const compact=s=>String(s).replace(/-/g,'');"
+                        + "const display=checkIn.replace(/-/g,'.')+' ~ '+checkOut.replace(/-/g,'.');"
                         + "document.querySelectorAll('a.day_close,[id^=enterPopup] a').forEach(a=>{if((a.innerText||'').includes('닫기'))a.click();});"
                         + "const regionButton=document.querySelector('#srch_frm a.yeyakSearchName');"
                         + "if(regionButton) regionButton.click();"
@@ -380,12 +384,20 @@ public class MainActivity extends Activity {
                         + "await sleep(5500);"
                         + "}"
                         + "await sleep(1500);"
+                        + "for(let p=0;p<90;p++){"
+                        + "if(document.querySelectorAll('#searchResultMap .rc_item').length>0)break;"
+                        + "await sleep(300);"
+                        + "}"
+                        + "const countLine=/^예약가능\\s*객실\\s*수\\s*:\\s*\\d+/;"
                         + "const items=[...document.querySelectorAll('#searchResultMap .rc_item')].map(item=>{"
-                        + "const name=(item.querySelector('.rc_ti b')?.innerText||'').replace(/\\s+/g,' ').trim();"
-                        + "const countText=(item.querySelector('.rc_util .ut_roomcount')?.innerText||'').replace(/\\s+/g,' ').trim();"
+                        + "const b=item.querySelector('.rc_ti b');"
+                        + "const ti=item.querySelector('.rc_ti');"
+                        + "const name=((b?b.textContent:ti?ti.textContent:'')||'').replace(/\\s+/g,' ').trim();"
+                        + "const cntEl=item.querySelector('.rc_util .ut_roomcount')||item.querySelector('.ut_roomcount');"
+                        + "const countText=((cntEl?cntEl.textContent:'')||'').replace(/\\s+/g,' ').trim();"
                         + "const count=Number((countText.match(/\\d+/)||['0'])[0]);"
                         + "return {facilityName:name,availableCount:countText,count};"
-                        + "}).filter(x=>x.facilityName&&x.count>0);"
+                        + "}).filter(x=>x.facilityName&&countLine.test(x.availableCount)&&x.count>0);"
                         + "ForestTripAndroid.postSearchResult(JSON.stringify({url:location.href,items:items}));"
                         + "}catch(e){"
                         + "ForestTripAndroid.postSearchResult(JSON.stringify({url:location.href||'',items:[],error:String(e)}));"

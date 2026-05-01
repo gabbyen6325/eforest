@@ -35,7 +35,7 @@ cd android-app
 설치 파일(로컬 빌드): `android-app\app\build\outputs\apk\debug\app-debug.apk`
 
 저장소에 포함된 디버그 APK(버전이 파일명에 포함됨): `android-app/releases/foresttrip-monitor-<versionName>-debug.apk`  
-예: `foresttrip-monitor-1.0.4-debug.apk`  
+예: `foresttrip-monitor-1.0.5-debug.apk`  
 (버전 올린 뒤 `assembleDebug`로 빌드하고 `releases`에 같은 이름으로 복사해 커밋하면 됩니다.)
 
 ## 사용 방법
