@@ -4,11 +4,16 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -75,6 +80,8 @@ public class MainActivity extends Activity {
     /** onPageFinished 가 여러 번 호출될 때 스크립트 중복 주입 방지 */
     private boolean scriptInjectedThisLoad = false;
 
+    private Runnable pendingInjectRunnable;
+
     private final Runnable monitorRunnable =
             new Runnable() {
                 @Override
@@ -102,11 +109,18 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
-        // PC Playwright와 동일한 데스크톱 페이지(지도·rc_item)를 받기 위해 모바일 UA 제거
-        settings.setUserAgentString(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"
-                        + " Chrome/120.0.0.0 Safari/537.36");
         webView.addJavascriptInterface(new ForestTripBridge(this), "ForestTripAndroid");
+        webView.setWebChromeClient(
+                new WebChromeClient() {
+                    @Override
+                    public boolean onConsoleMessage(ConsoleMessage message) {
+                        if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR
+                                || message.messageLevel() == ConsoleMessage.MessageLevel.WARNING) {
+                            appendLog("WebView " + message.messageLevel() + ": " + message.message());
+                        }
+                        return true;
+                    }
+                });
         webView.setWebViewClient(new WebViewClient());
     }
 
@@ -184,7 +198,8 @@ public class MainActivity extends Activity {
 
         webView = new WebView(this);
         webView.setVisibility(View.GONE);
-        root.addView(webView, new LinearLayout.LayoutParams(1, 1));
+        // 높이 0에 가까우면 일부 기기에서 로드/레이아웃이 생략될 수 있어 최소 픽셀 확보
+        root.addView(webView, new LinearLayout.LayoutParams(1, 512));
 
         setContentView(scrollView);
     }
@@ -272,6 +287,10 @@ public class MainActivity extends Activity {
     private void stopMonitoring() {
         running = false;
         handler.removeCallbacks(monitorRunnable);
+        if (pendingInjectRunnable != null) {
+            handler.removeCallbacks(pendingInjectRunnable);
+            pendingInjectRunnable = null;
+        }
         statusView.setText("중지됨");
         appendLog("모니터 중지");
     }
@@ -284,21 +303,60 @@ public class MainActivity extends Activity {
 
         appendLog("조회 시작: " + region + ", " + (camping ? "야영" : "숙박") + ", " + checkIn + " ~ " + checkOut);
         scriptInjectedThisLoad = false;
+        if (pendingInjectRunnable != null) {
+            handler.removeCallbacks(pendingInjectRunnable);
+            pendingInjectRunnable = null;
+        }
         webView.setWebViewClient(
                 new WebViewClient() {
                     @Override
+                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                        appendLog("페이지 로드 시작: " + (url != null ? url : "(null)"));
+                    }
+
+                    @Override
                     public void onPageFinished(WebView view, String url) {
+                        appendLog("페이지 로드 완료: " + (url != null ? url : "(null)"));
                         if (scriptInjectedThisLoad) {
                             return;
                         }
                         if (url == null || !url.contains("foresttrip.go.kr")) {
+                            appendLog("숲나들e URL이 아니어서 조회 스크립트를 건너뜁니다.");
                             return;
                         }
                         scriptInjectedThisLoad = true;
-                        handler.postDelayed(
-                                () -> injectSearchScript(region, checkIn, checkOut, camping), 1600);
+                        pendingInjectRunnable =
+                                () -> {
+                                    pendingInjectRunnable = null;
+                                    appendLog("조회 스크립트 주입…");
+                                    injectSearchScript(region, checkIn, checkOut, camping);
+                                };
+                        handler.postDelayed(pendingInjectRunnable, 1600);
+                    }
+
+                    @Override
+                    public void onReceivedError(
+                            WebView view, WebResourceRequest request, WebResourceError error) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && request.isForMainFrame()) {
+                            appendLog(
+                                    "페이지 로드 오류: "
+                                            + error.getDescription()
+                                            + " ("
+                                            + error.getErrorCode()
+                                            + ")");
+                        }
+                    }
+
+                    @SuppressWarnings("deprecation")
+                    @Override
+                    public void onReceivedError(
+                            WebView view, int errorCode, String description, String failingUrl) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                            appendLog("페이지 로드 오류: " + description + " (" + errorCode + ")");
+                        }
                     }
                 });
+        webView.stopLoading();
         webView.loadUrl(FORESTTRIP_URL);
     }
 
@@ -361,8 +419,10 @@ public class MainActivity extends Activity {
                         + "else if(link){link.click();}"
                         + "await sleep(400);"
                         + "for(let w=0;w<40;w++){"
-                        + "const ar=document.querySelector('#srchInsttArcd')?.value;"
-                        + "const fid=document.querySelector('#srchInsttId')?.value;"
+                        + "var arEl=document.querySelector('#srchInsttArcd');"
+                        + "var fidEl=document.querySelector('#srchInsttId');"
+                        + "var ar=arEl?arEl.value:'';"
+                        + "var fid=fidEl?fidEl.value:'';"
                         + "if(ar||fid)break;"
                         + "await sleep(125);"
                         + "}"
