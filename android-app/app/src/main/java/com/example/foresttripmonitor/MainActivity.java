@@ -8,7 +8,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
-import android.webkit.ValueCallback;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -27,6 +27,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -65,6 +66,15 @@ public class MainActivity extends Activity {
     private boolean running = false;
     private String lastAlertKey = "";
 
+    /** async 조회 스크립트가 끝날 때까지 ValueCallback으로는 결과를 받을 수 없어 브리지로 전달 */
+    private String pendingRegion = "";
+    private String pendingCheckIn = "";
+    private String pendingCheckOut = "";
+    private boolean pendingCamping = true;
+
+    /** onPageFinished 가 여러 번 호출될 때 스크립트 중복 주입 방지 */
+    private boolean scriptInjectedThisLoad = false;
+
     private final Runnable monitorRunnable =
             new Runnable() {
                 @Override
@@ -85,14 +95,34 @@ public class MainActivity extends Activity {
         loadPreferences();
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     private void setupWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
+        webView.addJavascriptInterface(new ForestTripBridge(this), "ForestTripAndroid");
         webView.setWebViewClient(new WebViewClient());
+    }
+
+    /** static + WeakReference: WebView이 Activity를 잡아 메모리 누수 나지 않게 */
+    private static final class ForestTripBridge {
+        private final WeakReference<MainActivity> hostRef;
+
+        ForestTripBridge(MainActivity activity) {
+            hostRef = new WeakReference<>(activity);
+        }
+
+        @JavascriptInterface
+        public void postSearchResult(String json) {
+            MainActivity host = hostRef.get();
+            if (host == null) {
+                return;
+            }
+            final String payload = json != null ? json : "{}";
+            host.handler.post(() -> host.handleSearchResultFromJson(payload));
+        }
     }
 
     private void buildUi() {
@@ -103,10 +133,22 @@ public class MainActivity extends Activity {
         scrollView.addView(root);
 
         TextView title = new TextView(this);
-        title.setText("Foresttrip 예약 모니터");
-        title.setTextSize(24);
+        title.setText("Foresttrip 예약 모니터  v" + BuildConfig.VERSION_NAME);
+        title.setTextSize(22);
         title.setTextColor(Color.rgb(31, 122, 77));
         root.addView(title);
+
+        TextView versionLine = new TextView(this);
+        versionLine.setTextSize(15);
+        versionLine.setTextColor(Color.rgb(50, 90, 70));
+        versionLine.setPadding(0, 6, 0, 10);
+        versionLine.setText(
+                "빌드 "
+                        + BuildConfig.VERSION_CODE
+                        + " · Git 릴리스: foresttrip-monitor-"
+                        + BuildConfig.VERSION_NAME
+                        + "-debug.apk");
+        root.addView(versionLine);
 
         regionSpinner = addLabeledSpinner(root, "지역", REGION_OPTIONS);
         reservationSpinner = addLabeledSpinner(root, "예약 유형", RESERVATION_LABELS);
@@ -237,11 +279,20 @@ public class MainActivity extends Activity {
         final boolean camping = isCamping();
 
         appendLog("조회 시작: " + region + ", " + (camping ? "야영" : "숙박") + ", " + checkIn + " ~ " + checkOut);
+        scriptInjectedThisLoad = false;
         webView.setWebViewClient(
                 new WebViewClient() {
                     @Override
                     public void onPageFinished(WebView view, String url) {
-                        handler.postDelayed(() -> injectSearchScript(region, checkIn, checkOut, camping), 1600);
+                        if (scriptInjectedThisLoad) {
+                            return;
+                        }
+                        if (url == null || !url.contains("foresttrip.go.kr")) {
+                            return;
+                        }
+                        scriptInjectedThisLoad = true;
+                        handler.postDelayed(
+                                () -> injectSearchScript(region, checkIn, checkOut, camping), 1600);
                     }
                 });
         webView.loadUrl(FORESTTRIP_URL);
@@ -266,9 +317,16 @@ public class MainActivity extends Activity {
     }
 
     private void injectSearchScript(String region, String checkIn, String checkOut, boolean camping) {
+        pendingRegion = region;
+        pendingCheckIn = checkIn;
+        pendingCheckOut = checkOut;
+        pendingCamping = camping;
+
         String houseMode = camping ? "02" : "01";
         String script =
-                "(async function(){"
+                "(function(){"
+                        + "var run=async function(){"
+                        + "try{"
                         + "const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));"
                         + "const region="
                         + JSONObject.quote(region)
@@ -328,25 +386,42 @@ public class MainActivity extends Activity {
                         + "const count=Number((countText.match(/\\d+/)||['0'])[0]);"
                         + "return {facilityName:name,availableCount:countText,count};"
                         + "}).filter(x=>x.facilityName&&x.count>0);"
-                        + "return JSON.stringify({url:location.href,items});"
-                        + "})()";
+                        + "ForestTripAndroid.postSearchResult(JSON.stringify({url:location.href,items:items}));"
+                        + "}catch(e){"
+                        + "ForestTripAndroid.postSearchResult(JSON.stringify({url:location.href||'',items:[],error:String(e)}));"
+                        + "}"
+                        + "};"
+                        + "run();"
+                        + "})();";
 
-        webView.evaluateJavascript(
-                script,
-                new ValueCallback<String>() {
-                    @Override
-                    public void onReceiveValue(String value) {
-                        handleSearchResult(value, region, checkIn, checkOut, camping);
-                    }
-                });
+        webView.evaluateJavascript(script, null);
     }
 
-    private void handleSearchResult(
-            String rawValue, String region, String checkIn, String checkOut, boolean camping) {
+    private void handleSearchResultFromJson(String jsonText) {
+        final String region = pendingRegion;
+        final String checkIn = pendingCheckIn;
+        final String checkOut = pendingCheckOut;
+        final boolean camping = pendingCamping;
+
         try {
-            String jsonText = decodeJsString(rawValue);
-            JSONObject result = new JSONObject(jsonText);
-            JSONArray items = result.getJSONArray("items");
+            String raw = jsonText == null ? "" : jsonText.trim();
+            if (raw.isEmpty() || "{}".equals(raw)) {
+                appendLog(
+                        "결과 수신 실패(빈 JSON). 구버전 APK이면 삭제 후 releases의 foresttrip-monitor-"
+                                + BuildConfig.VERSION_NAME
+                                + "-debug.apk 을 설치하세요.");
+                scheduleNext();
+                return;
+            }
+
+            JSONObject result = new JSONObject(raw);
+            if (result.has("error")) {
+                appendLog("조회 스크립트 오류: " + result.optString("error"));
+            }
+            JSONArray items = result.optJSONArray("items");
+            if (items == null) {
+                items = new JSONArray();
+            }
             if (items.length() == 0) {
                 appendLog("예약 가능 항목 없음");
                 scheduleNext();
@@ -363,14 +438,25 @@ public class MainActivity extends Activity {
 
             StringBuilder keyBuilder = new StringBuilder();
             for (int index = 0; index < items.length(); index++) {
-                JSONObject item = items.getJSONObject(index);
-                String facilityName = item.getString("facilityName");
-                String availableCount = item.getString("availableCount");
+                JSONObject item = items.optJSONObject(index);
+                if (item == null) {
+                    continue;
+                }
+                String facilityName = item.optString("facilityName", "").trim();
+                String availableCount = item.optString("availableCount", "").trim();
+                if (facilityName.isEmpty()) {
+                    continue;
+                }
                 message.append("- ").append(facilityName).append(" / ").append(availableCount).append("\n");
                 keyBuilder.append(facilityName).append(":").append(availableCount).append("|");
             }
 
             String alertKey = keyBuilder.toString();
+            if (keyBuilder.length() == 0) {
+                appendLog("예약 가능 항목 없음(시설명 파싱 실패)");
+                scheduleNext();
+                return;
+            }
             if (!alertKey.equals(lastAlertKey)) {
                 lastAlertKey = alertKey;
                 sendTelegram(message.toString());
@@ -379,22 +465,11 @@ public class MainActivity extends Activity {
                 appendLog("예약 가능 항목 유지 중, 중복 알림 생략");
             }
         } catch (Exception error) {
-            appendLog("결과 처리 실패: " + error.getMessage());
+            String hint = jsonText != null && jsonText.length() > 120 ? jsonText.substring(0, 120) + "…" : jsonText;
+            appendLog("결과 처리 실패: " + error.getMessage() + " · 수신일부: " + hint);
         }
 
         scheduleNext();
-    }
-
-    private String decodeJsString(String rawValue) {
-        if (rawValue == null || "null".equals(rawValue)) {
-            return "{}";
-        }
-
-        try {
-            return new JSONArray("[" + rawValue + "]").getString(0);
-        } catch (Exception ignored) {
-            return rawValue;
-        }
     }
 
     private void sendTelegram(String text) {
@@ -448,6 +523,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         stopMonitoring();
+        webView.removeJavascriptInterface("ForestTripAndroid");
         webView.destroy();
         super.onDestroy();
     }
