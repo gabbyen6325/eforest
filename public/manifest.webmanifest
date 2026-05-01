@@ -1,0 +1,38 @@
+{
+  "name": "Foresttrip 예약 모니터",
+  "short_name": "Foresttrip",
+  "description": "숲나들e 예약 가능 여부를 조회하고 모니터를 제어합니다.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f4",
+  "theme_color": "#1f7a4d",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+{
+  "name": "Foresttrip 예약 모니터",
+  "short_name": "Foresttrip",
+  "description": "숲나들e 예약 가능 여부를 모바일 브라우저에서 제어합니다.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f7f4",
+  "theme_color": "#1f7a4d",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

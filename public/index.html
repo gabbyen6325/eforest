@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1f7a4d" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Foresttrip" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <title>Foresttrip 예약 모니터</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7f4;
+        --card: #ffffff;
+        --text: #17211b;
+        --muted: #66746b;
+        --primary: #1f7a4d;
+        --primary-dark: #145c38;
+        --danger: #b42318;
+        --border: #d8e1da;
+        --shadow: 0 20px 50px rgba(23, 33, 27, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, rgba(31, 122, 77, 0.16), transparent 34rem),
+          var(--bg);
+        color: var(--text);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", Arial, sans-serif;
+      }
+
+      main {
+        width: min(980px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 48px 0;
+      }
+
+      .hero {
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--primary);
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(32px, 5vw, 52px);
+        line-height: 1.12;
+      }
+
+      .description {
+        max-width: 680px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.7;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+        gap: 20px;
+        align-items: start;
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: var(--shadow);
+        padding: 24px;
+        backdrop-filter: blur(8px);
+      }
+
+      .field {
+        margin-bottom: 18px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+
+      input {
+        width: 100%;
+        min-height: 48px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 0 14px;
+        color: var(--text);
+        background: #fff;
+        font: inherit;
+      }
+
+      select {
+        width: 100%;
+        min-height: 48px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 0 14px;
+        color: var(--text);
+        background: #fff;
+        font: inherit;
+      }
+
+      input:focus,
+      select:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(31, 122, 77, 0.14);
+        outline: none;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 4px 0 22px;
+      }
+
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: #fff;
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .check input {
+        width: 16px;
+        min-height: 16px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      button {
+        min-height: 46px;
+        border: 0;
+        border-radius: 14px;
+        padding: 0 18px;
+        color: #fff;
+        background: var(--primary);
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--primary-dark);
+      }
+
+      button.secondary {
+        border: 1px solid var(--border);
+        color: var(--text);
+        background: #fff;
+      }
+
+      button.secondary:hover {
+        background: #eef4f0;
+      }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+        font-weight: 800;
+      }
+
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: #9aa6a0;
+      }
+
+      .dot.running {
+        background: var(--primary);
+        box-shadow: 0 0 0 8px rgba(31, 122, 77, 0.12);
+      }
+
+      .message {
+        min-height: 22px;
+        margin-top: 16px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .message.error {
+        color: var(--danger);
+      }
+
+      pre {
+        max-height: 360px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        margin: 0;
+        padding: 14px;
+        background: #101914;
+        color: #d8f3df;
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .hint {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      @media (max-width: 780px) {
+        main {
+          padding: 28px 0;
+        }
+
+        .grid,
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">Foresttrip Monitor</p>
+        <h1>예약 조회 조건 입력</h1>
+        <p class="description">
+          지역과 이용 날짜를 입력하면 `.env` 설정을 갱신하고, 같은 화면에서 예약 모니터를
+          시작하거나 중지할 수 있습니다.
+        </p>
+      </section>
+
+      <section class="grid">
+        <form class="card" id="configForm">
+          <div class="row">
+            <div class="field">
+              <label for="regionName">지역</label>
+              <select id="regionName" name="regionName" required>
+                <option value="">지역 선택</option>
+                <option value="서울/인천/경기">서울/인천/경기</option>
+                <option value="강원">강원</option>
+                <option value="충북">충북</option>
+                <option value="대전/충남">대전/충남</option>
+                <option value="전북">전북</option>
+                <option value="광주/전남">광주/전남</option>
+                <option value="대구/경북">대구/경북</option>
+                <option value="부산/경남">부산/경남</option>
+                <option value="제주">제주</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="reservationType">예약 유형</label>
+              <select id="reservationType" name="reservationType">
+                <option value="camping">야영</option>
+                <option value="lodging">숙박</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="field">
+              <label for="checkInDate">체크인</label>
+              <input id="checkInDate" name="checkInDate" type="date" required />
+            </div>
+            <div class="field">
+              <label for="checkOutDate">체크아웃</label>
+              <input id="checkOutDate" name="checkOutDate" type="date" required />
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="field">
+              <label for="checkIntervalMinutes">반복 주기(분)</label>
+              <input id="checkIntervalMinutes" name="checkIntervalMinutes" type="number" min="1" step="1" />
+            </div>
+            <div class="field">
+              <label for="alertCooldownMinutes">알림 재전송 제한(분)</label>
+              <input id="alertCooldownMinutes" name="alertCooldownMinutes" type="number" min="0" step="1" />
+            </div>
+          </div>
+
+          <div class="checks">
+            <label class="check">
+              <input id="headless" name="headless" type="checkbox" />
+              브라우저 숨김
+            </label>
+            <label class="check">
+              <input id="runOnce" name="runOnce" type="checkbox" />
+              한 번만 조회
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit">설정 저장</button>
+            <button type="button" id="startButton">저장 후 시작</button>
+            <button type="button" class="danger" id="stopButton">중지</button>
+            <button type="button" class="secondary" id="refreshButton">상태 새로고침</button>
+            <button type="button" class="secondary" id="installButton" hidden>앱 설치</button>
+          </div>
+
+          <p class="message" id="message"></p>
+        </form>
+
+        <aside class="card">
+          <div class="status">
+            <span class="dot" id="statusDot"></span>
+            <span id="statusText">상태 확인 중</span>
+          </div>
+          <pre id="logs">로그를 불러오는 중...</pre>
+          <p class="hint">
+            안드로이드 Chrome에서는 주소창 메뉴에서 <strong>홈 화면에 추가</strong> 또는
+            화면의 <strong>앱 설치</strong> 버튼으로 설치할 수 있습니다.
+          </p>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector("#configForm");
+      const message = document.querySelector("#message");
+      const logs = document.querySelector("#logs");
+      const statusDot = document.querySelector("#statusDot");
+      const statusText = document.querySelector("#statusText");
+      const installButton = document.querySelector("#installButton");
+      let deferredInstallPrompt;
+
+      /** id 기반 — form.xxx 는 일부 브라우저/WebView에서 null 이 될 수 있음 */
+      function field(id) {
+        const el = document.getElementById(id);
+        if (!el) {
+          throw new Error(`UI 요소를 찾을 수 없습니다: #${id}`);
+        }
+        return el;
+      }
+
+      function setMessage(text, isError = false) {
+        if (!message) {
+          return;
+        }
+        message.textContent = text;
+        message.classList.toggle("error", isError);
+      }
+
+      function formPayload() {
+        return {
+          regionName: field("regionName").value,
+          reservationType: field("reservationType").value,
+          checkInDate: field("checkInDate").value,
+          checkOutDate: field("checkOutDate").value,
+          checkIntervalMinutes: field("checkIntervalMinutes").value,
+          alertCooldownMinutes: field("alertCooldownMinutes").value,
+          headless: field("headless").checked,
+          runOnce: field("runOnce").checked,
+        };
+      }
+
+      async function request(path, options = {}) {
+        const response = await fetch(path, {
+          headers: { "content-type": "application/json" },
+          ...options,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "요청 처리 중 오류가 발생했습니다.");
+        }
+        return data;
+      }
+
+      async function loadConfig() {
+        const { config } = await request("/api/config");
+        field("regionName").value = config.regionName;
+        field("reservationType").value = config.reservationType;
+        field("checkInDate").value = config.checkInDate;
+        field("checkOutDate").value = config.checkOutDate;
+        field("checkIntervalMinutes").value = config.checkIntervalMinutes;
+        field("alertCooldownMinutes").value = config.alertCooldownMinutes;
+        field("headless").checked = config.headless;
+        field("runOnce").checked = config.runOnce;
+      }
+
+      async function saveConfig() {
+        const { config } = await request("/api/config", {
+          method: "POST",
+          body: JSON.stringify(formPayload()),
+        });
+        field("regionName").value = config.regionName;
+        setMessage("설정을 저장했습니다.");
+      }
+
+      async function refreshStatus() {
+        const status = await request("/api/status");
+        const lines = Array.isArray(status.logs) ? status.logs : [];
+        if (statusDot) {
+          statusDot.classList.toggle("running", status.running);
+        }
+        if (statusText) {
+          statusText.textContent = status.running
+            ? `실행 중${status.pid ? ` (PID ${status.pid})` : ""}`
+            : "중지됨";
+        }
+        if (logs) {
+          logs.textContent = lines.length ? lines.join("\n") : "아직 로그가 없습니다.";
+        }
+      }
+
+      if (!form) {
+        setMessage("설정 폼(#configForm)을 찾을 수 없습니다. index.html 전체가 로드됐는지 확인하세요.", true);
+      } else {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          await saveConfig();
+          await refreshStatus();
+        } catch (error) {
+          setMessage(error.message, true);
+        }
+      });
+
+      document.querySelector("#startButton").addEventListener("click", async () => {
+        try {
+          await saveConfig();
+          await request("/api/start", { method: "POST", body: "{}" });
+          setMessage("모니터를 시작했습니다.");
+          await refreshStatus();
+        } catch (error) {
+          setMessage(error.message, true);
+        }
+      });
+
+      document.querySelector("#stopButton").addEventListener("click", async () => {
+        try {
+          await request("/api/stop", { method: "POST", body: "{}" });
+          setMessage("모니터 중지를 요청했습니다.");
+          await refreshStatus();
+        } catch (error) {
+          setMessage(error.message, true);
+        }
+      });
+
+      document.querySelector("#refreshButton").addEventListener("click", refreshStatus);
+
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        if (installButton) {
+          installButton.hidden = false;
+        }
+      });
+
+      if (installButton) {
+        installButton.addEventListener("click", async () => {
+          if (!deferredInstallPrompt) {
+            setMessage("브라우저 메뉴에서 홈 화면에 추가를 선택해 주세요.");
+            return;
+          }
+
+          deferredInstallPrompt.prompt();
+          await deferredInstallPrompt.userChoice;
+          deferredInstallPrompt = undefined;
+          installButton.hidden = true;
+        });
+      }
+
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+        });
+      }
+
+      void loadConfig()
+        .then(refreshStatus)
+        .catch((error) => setMessage(error.message, true));
+
+      setInterval(refreshStatus, 5000);
+      }
+    </script>
+  </body>
+</html>

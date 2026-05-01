@@ -1,0 +1,27 @@
+{
+  "name": "eforest",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "auth": "tsx src/auth.ts",
+    "monitor": "tsx src/monitor.ts",
+    "ui": "tsx src/server.ts",
+    "telegram:test": "tsx src/telegram.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  }
+}

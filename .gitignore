@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# build / reports
+dist/
+playwright-report/
+test-results/
+
+# env secrets
+.env
+.env.local
+.env.*.local
+
+# OS/editor
+.DS_Store
+Thumbs.db
+
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+.env
+.env.*
+!.env.example
