@@ -77,10 +77,17 @@ public class MainActivity extends Activity {
     private String pendingCheckOut = "";
     private boolean pendingCamping = true;
 
-    /** onPageFinished 가 여러 번 호출될 때 스크립트 중복 주입 방지 */
-    private boolean scriptInjectedThisLoad = false;
+    /**
+     * 조회 버튼 클릭 후 fcfsRsvt… 상세로 이동하면 기존 문서의 async 가 끊기므로, 메인 제출과 결과 페이지 파싱을
+     * 분리한다.
+     */
+    private boolean mainFormInjectDone = false;
+
+    private boolean resultsScriptDone = false;
 
     private Runnable pendingInjectRunnable;
+
+    private Runnable pendingFallbackRunnable;
 
     private final Runnable monitorRunnable =
             new Runnable() {
@@ -114,9 +121,15 @@ public class MainActivity extends Activity {
                 new WebChromeClient() {
                     @Override
                     public boolean onConsoleMessage(ConsoleMessage message) {
+                        String text = message.message();
+                        if (text.contains("parser-blocking")
+                                && text.contains("daumcdn.net")
+                                && message.messageLevel() == ConsoleMessage.MessageLevel.WARNING) {
+                            return true;
+                        }
                         if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR
                                 || message.messageLevel() == ConsoleMessage.MessageLevel.WARNING) {
-                            appendLog("WebView " + message.messageLevel() + ": " + message.message());
+                            appendLog("WebView " + message.messageLevel() + ": " + text);
                         }
                         return true;
                     }
@@ -291,6 +304,10 @@ public class MainActivity extends Activity {
             handler.removeCallbacks(pendingInjectRunnable);
             pendingInjectRunnable = null;
         }
+        if (pendingFallbackRunnable != null) {
+            handler.removeCallbacks(pendingFallbackRunnable);
+            pendingFallbackRunnable = null;
+        }
         statusView.setText("중지됨");
         appendLog("모니터 중지");
     }
@@ -302,10 +319,15 @@ public class MainActivity extends Activity {
         final boolean camping = isCamping();
 
         appendLog("조회 시작: " + region + ", " + (camping ? "야영" : "숙박") + ", " + checkIn + " ~ " + checkOut);
-        scriptInjectedThisLoad = false;
+        mainFormInjectDone = false;
+        resultsScriptDone = false;
         if (pendingInjectRunnable != null) {
             handler.removeCallbacks(pendingInjectRunnable);
             pendingInjectRunnable = null;
+        }
+        if (pendingFallbackRunnable != null) {
+            handler.removeCallbacks(pendingFallbackRunnable);
+            pendingFallbackRunnable = null;
         }
         webView.setWebViewClient(
                 new WebViewClient() {
@@ -317,21 +339,46 @@ public class MainActivity extends Activity {
                     @Override
                     public void onPageFinished(WebView view, String url) {
                         appendLog("페이지 로드 완료: " + (url != null ? url : "(null)"));
-                        if (scriptInjectedThisLoad) {
+                        if (!running) {
                             return;
                         }
                         if (url == null || !url.contains("foresttrip.go.kr")) {
                             appendLog("숲나들e URL이 아니어서 조회 스크립트를 건너뜁니다.");
                             return;
                         }
-                        scriptInjectedThisLoad = true;
-                        pendingInjectRunnable =
-                                () -> {
-                                    pendingInjectRunnable = null;
-                                    appendLog("조회 스크립트 주입…");
-                                    injectSearchScript(region, checkIn, checkOut, camping);
-                                };
-                        handler.postDelayed(pendingInjectRunnable, 1600);
+
+                        boolean looksLikeResultPage =
+                                url.contains("fcfsRsvt") || url.contains("RcrfrDtl");
+
+                        if (looksLikeResultPage && !resultsScriptDone) {
+                            if (pendingFallbackRunnable != null) {
+                                handler.removeCallbacks(pendingFallbackRunnable);
+                                pendingFallbackRunnable = null;
+                            }
+                            resultsScriptDone = true;
+                            pendingInjectRunnable =
+                                    () -> {
+                                        pendingInjectRunnable = null;
+                                        appendLog("결과 페이지에서 파싱 스크립트 주입…");
+                                        injectResultsPageScript(camping);
+                                    };
+                            handler.postDelayed(pendingInjectRunnable, 2200);
+                            return;
+                        }
+
+                        boolean isMainEntry =
+                                url.contains("main.do")
+                                        || url.contains("hmpgId=FRIP");
+                        if (isMainEntry && !mainFormInjectDone) {
+                            mainFormInjectDone = true;
+                            pendingInjectRunnable =
+                                    () -> {
+                                        pendingInjectRunnable = null;
+                                        appendLog("메인 폼 제출 스크립트 주입…");
+                                        injectMainFormSubmitScript(region, checkIn, checkOut, camping);
+                                    };
+                            handler.postDelayed(pendingInjectRunnable, 1600);
+                        }
                     }
 
                     @Override
@@ -378,7 +425,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void injectSearchScript(String region, String checkIn, String checkOut, boolean camping) {
+    /** 메인(main.do): 지역·날짜·조회 클릭만. 이후 페이지 이동으로 async 가 끊기므로 await 를 두지 않는다. */
+    private void injectMainFormSubmitScript(String region, String checkIn, String checkOut, boolean camping) {
         pendingRegion = region;
         pendingCheckIn = checkIn;
         pendingCheckOut = checkOut;
@@ -398,9 +446,6 @@ public class MainActivity extends Activity {
                         + ";"
                         + "const checkOut="
                         + JSONObject.quote(checkOut)
-                        + ";"
-                        + "const isCamping="
-                        + (camping ? "true" : "false")
                         + ";"
                         + "const houseMode='"
                         + houseMode
@@ -435,13 +480,53 @@ public class MainActivity extends Activity {
                         + "const mode=document.querySelector('#houseCampSctin'); if(mode) mode.value=houseMode;"
                         + "const btn=document.querySelector('#srch_frm button[title=\"조회하기\"],#srch_frm button');"
                         + "if(btn) btn.click();"
-                        + "await sleep(5500);"
+                        + "}catch(e){"
+                        + "ForestTripAndroid.postSearchResult(JSON.stringify({url:location.href||'',items:[],error:String(e)}));"
+                        + "}"
+                        + "};"
+                        + "run();"
+                        + "})();";
+
+        webView.evaluateJavascript(script, null);
+
+        pendingFallbackRunnable =
+                () -> {
+                    pendingFallbackRunnable = null;
+                    if (!running || resultsScriptDone) {
+                        return;
+                    }
+                    appendLog("상세 페이지 미감지 → 현재 문서에서 파싱만 시도");
+                    resultsScriptDone = true;
+                    injectResultsPageScript(camping);
+                };
+        handler.postDelayed(pendingFallbackRunnable, 14000);
+    }
+
+    /** fcfsRsvt… 등 결과 화면: 야영 필터 후 지도 항목 파싱 */
+    private void injectResultsPageScript(boolean camping) {
+        if (pendingFallbackRunnable != null) {
+            handler.removeCallbacks(pendingFallbackRunnable);
+            pendingFallbackRunnable = null;
+        }
+
+        String script =
+                "(function(){"
+                        + "var run=async function(){"
+                        + "try{"
+                        + "const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));"
+                        + "const isCamping="
+                        + (camping ? "true" : "false")
+                        + ";"
+                        + "document.querySelectorAll('a.day_close,[id^=enterPopup] a').forEach(a=>{if((a.innerText||'').includes('닫기'))a.click();});"
+                        + "await sleep(800);"
                         + "if(isCamping){"
                         + "const campingLink=[...document.querySelectorAll('a')].find(a=>(a.innerText||'').trim()==='야영');"
                         + "if(campingLink)campingLink.click();"
                         + "else{const f=document.querySelector('#filter2');if(f)f.click();"
                         + "else if(typeof fn_switchFilter==='function')fn_switchFilter('2');}"
                         + "await sleep(5500);"
+                        + "}else{"
+                        + "await sleep(2500);"
                         + "}"
                         + "await sleep(1500);"
                         + "for(let p=0;p<90;p++){"
