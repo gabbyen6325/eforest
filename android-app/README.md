@@ -32,7 +32,10 @@ cd android-app
 .\gradlew.bat assembleDebug
 ```
 
-설치 파일: `android-app\app\build\outputs\apk\debug\app-debug.apk`
+설치 파일(로컬 빌드): `android-app\app\build\outputs\apk\debug\app-debug.apk`
+
+저장소에 포함된 동일 빌드 사본(Git에서 바로 받기): `android-app/releases/app-debug.apk`  
+(소스 변경 후에는 `assembleDebug`로 다시 빌드한 뒤 이 파일을 덮어써서 커밋하면 됩니다.)
 
 ## 사용 방법
 
